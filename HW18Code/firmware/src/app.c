@@ -27,6 +27,17 @@ int rxPos = 0; // how much data has been stored
 int gotRx = 0; // the flag
 int rxVal = 0; // a place to store the int that was received
 
+int neutralSpeed = 600;
+int differentialSpeed = 0;
+int motorSpeedR = 600;
+int motorSpeedL = 600;
+int commandMove  = 0;
+
+int minServoVal = 1600;
+int maxServoVal = 7400;
+
+int commandServo = 3500;
+
 // *****************************************************************************
 /* Application Data
 
@@ -300,6 +311,42 @@ void APP_Initialize(void) {
     appData.readBuffer = &readBuffer[0];
 
     startTime = _CP0_GET_COUNT();
+    
+    
+    // put these initializations in APP_Initialize()
+    RPA0Rbits.RPA0R = 0b0101; // A0 is OC1
+    TRISAbits.TRISA1 = 0;
+    LATAbits.LATA1 = 0; // A1 is the direction pin to go along with OC1
+
+    RPB2Rbits.RPB2R = 0b0101; // B2 is OC4
+    TRISBbits.TRISB3 = 0;
+    LATBbits.LATB3 = 0; // B3 is the direction pin to go along with OC4
+    
+    // also put these in APP_Initialize()
+    T2CONbits.TCKPS = 2; // prescaler N=4 
+    PR2 = 1200 - 1; // 10kHz
+    TMR2 = 0;
+    OC1CONbits.OCM = 0b110; // PWM mode without fault pin; other OC1CON bits are defaults
+    OC4CONbits.OCM = 0b110;
+    OC1RS = 0; // max allowed value is 1119
+    OC1R = 0; // read-only initial value
+    OC4RS = 0; // max allowed value is 1119
+    OC4R = 0; // read-only initial value
+    T2CONbits.ON = 1;
+    OC1CONbits.ON = 1;
+    OC4CONbits.ON = 1;    
+    
+    
+    // put these initializations in APP_Initialize()
+    T3CONbits.TCKPS = 4; // prescaler N=16
+    PR3 = 60000 - 1; // 50Hz
+    TMR3 = 0;
+    OC3CONbits.OCM = 0b110; // PWM mode without fault pin; other OC1CON bits are defaults
+    OC3CONbits.OCTSEL = 1; // use timer3
+    OC3RS = 4500; // should set the motor to 90 degrees (0.5ms to 2.5ms is 1500 to 7500 for 0 to 180 degrees)
+    OC3R = 4500; // read-only
+    T3CONbits.ON = 1;
+    OC3CONbits.ON = 1;
 }
 
 /******************************************************************************
@@ -342,6 +389,31 @@ void APP_Tasks(void) {
             break;
 
         case APP_STATE_SCHEDULE_READ:
+            
+            // somewhere in APP_Tasks(), probably in case APP_STATE_SCHEDULE_READ
+            // when you read data from the host
+            differentialSpeed = commandMove;
+            
+            // Calculate Desired Motor Speeds
+            motorSpeedR = neutralSpeed + differentialSpeed/2;
+            motorSpeedL = neutralSpeed - differentialSpeed/2;
+            
+            LATAbits.LATA1 = 1; // direction
+            OC1RS = motorSpeedR; // velocity, 50%
+            LATBbits.LATB3 = 0; // direction
+            OC4RS = motorSpeedL; // velocity, 50%
+            
+            // Servo Logic
+            if(commandServo > maxServoVal)
+            {
+                commandServo = maxServoVal;
+            }
+            if(commandServo < minServoVal)
+            {
+                commandServo = minServoVal;
+            }
+            OC3RS = ((maxServoVal-minServoVal)/2) + commandServo;
+            
 
             if (APP_StateReset()) {
                 break;
@@ -426,6 +498,8 @@ void APP_Tasks(void) {
             
             if (gotRx) {
                 len = sprintf(dataOut, "got: %d\r\n", rxVal);
+                commandMove = rxVal;
+                commandServo = rxVal;
                 i++;
                 USB_DEVICE_CDC_Write(USB_DEVICE_CDC_INDEX_0,
                         &appData.writeTransferHandle,
