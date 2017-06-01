@@ -27,6 +27,8 @@ int rxPos = 0; // how much data has been stored
 int gotRx = 0; // the flag
 int rxVal = 0; // a place to store the int that was received
 
+char motorToControl = 0;
+
 int neutralSpeed = 600;
 int differentialSpeed = 0;
 int motorSpeedR = 600;
@@ -36,7 +38,8 @@ int commandMove  = 0;
 int minServoVal = 1600;
 int maxServoVal = 7400;
 
-int commandServo = 3500;
+
+int commandServo = 0;
 
 // *****************************************************************************
 /* Application Data
@@ -338,6 +341,7 @@ void APP_Initialize(void) {
     
     
     // put these initializations in APP_Initialize()
+    RPB14Rbits.RPB14R = 0b0101; // B14 is OC3
     T3CONbits.TCKPS = 4; // prescaler N=16
     PR3 = 60000 - 1; // 50Hz
     TMR3 = 0;
@@ -394,6 +398,34 @@ void APP_Tasks(void) {
             // when you read data from the host
             differentialSpeed = commandMove;
             
+            if(motorToControl == 0)
+            {
+                motorToControl = 1;
+                if(differentialSpeed > 0)
+                {
+                    LATAbits.LATA1 = 0;
+                }
+                else
+                {
+                    LATAbits.LATA1 = 1;
+                }
+                OC1RS = abs(differentialSpeed);
+            }
+            else
+            {
+                motorToControl = 0;
+                if(differentialSpeed > 0)
+                {
+                    LATBbits.LATB3 = 0;
+                }
+                else
+                {
+                    LATBbits.LATB3 = 1;
+                }
+                OC4RS = abs(differentialSpeed);
+            }
+            
+            /*
             // Calculate Desired Motor Speeds
             motorSpeedR = neutralSpeed + differentialSpeed/2;
             motorSpeedL = neutralSpeed - differentialSpeed/2;
@@ -402,17 +434,9 @@ void APP_Tasks(void) {
             OC1RS = motorSpeedR; // velocity, 50%
             LATBbits.LATB3 = 0; // direction
             OC4RS = motorSpeedL; // velocity, 50%
+             * */
             
-            // Servo Logic
-            if(commandServo > maxServoVal)
-            {
-                commandServo = maxServoVal;
-            }
-            if(commandServo < minServoVal)
-            {
-                commandServo = minServoVal;
-            }
-            OC3RS = ((maxServoVal-minServoVal)/2) + commandServo;
+            OC3RS = 4500 + 2*commandServo;
             
 
             if (APP_StateReset()) {
